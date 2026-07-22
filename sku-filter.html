@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SKU Filter Tool</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #f5f5f7; --card: #fff; --border: #e0e0e0;
+    --accent: #1a73e8; --accent-hover: #1558b0; --accent-light: #e8f0fe;
+    --success: #188038; --success-light: #e6f4ea;
+    --error: #d93025; --error-light: #fce8e6;
+    --warn: #b06000; --warn-light: #fef7e0;
+    --text: #202124; --muted: #5f6368;
+  }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; padding: 24px 16px 48px; }
+  header { text-align: center; margin-bottom: 32px; }
+  header h1 { font-size: 26px; font-weight: 700; letter-spacing: -0.3px; }
+  header p { color: var(--muted); margin-top: 6px; font-size: 14px; }
+
+  .stepper { display: flex; align-items: center; justify-content: center; margin-bottom: 28px; flex-wrap: wrap; row-gap: 8px; }
+  .step-item { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 500; color: var(--muted); }
+  .step-item.active { color: var(--accent); }
+  .step-item.done { color: var(--success); }
+  .step-num { width: 26px; height: 26px; border-radius: 50%; background: #dadce0; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; }
+  .step-item.active .step-num { background: var(--accent); }
+  .step-item.done .step-num { background: var(--success); }
+  .step-connector { width: 32px; height: 2px; background: #dadce0; flex-shrink: 0; }
+  .step-connector.done { background: var(--success); }
+
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 28px; max-width: 780px; margin: 0 auto 20px; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+  .card h2 { font-size: 17px; font-weight: 600; margin-bottom: 6px; }
+  .card .subtitle { font-size: 13px; color: var(--muted); margin-bottom: 20px; }
+
+  .drop-zone { border: 2px dashed var(--border); border-radius: 10px; padding: 32px 24px; text-align: center; cursor: pointer; transition: border-color .15s, background .15s; position: relative; }
+  .drop-zone:hover, .drop-zone.drag-over { border-color: var(--accent); background: var(--accent-light); }
+  .drop-zone input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+  .drop-icon { font-size: 32px; margin-bottom: 8px; }
+  .drop-zone p { font-size: 14px; color: var(--muted); }
+  .drop-zone strong { color: var(--accent); }
+
+  .file-list { margin-top: 16px; display: flex; flex-direction: column; gap: 8px; }
+  .file-chip { display: flex; align-items: center; gap: 10px; background: var(--accent-light); border: 1px solid #c5d8fb; border-radius: 8px; padding: 9px 14px; font-size: 13px; }
+  .file-chip .fname { flex: 1; font-weight: 500; color: var(--accent); word-break: break-all; }
+  .file-chip .fsize { color: var(--muted); font-size: 12px; white-space: nowrap; }
+  .file-chip .remove-btn { background: none; border: none; cursor: pointer; color: var(--muted); font-size: 16px; padding: 2px 4px; border-radius: 4px; }
+  .file-chip .remove-btn:hover { color: var(--error); }
+
+  .row { display: flex; gap: 16px; flex-wrap: wrap; }
+  .col { flex: 1; min-width: 200px; }
+  label.field-label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+  select, input[type="text"] { width: 100%; padding: 9px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; color: var(--text); background: #fff; outline: none; transition: border-color .15s; -webkit-appearance: none; appearance: none; }
+  select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%235f6368' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 32px; }
+  select:focus { border-color: var(--accent); }
+
+  .btn { display: inline-flex; align-items: center; gap: 8px; padding: 10px 22px; border-radius: 8px; font-size: 14px; font-weight: 600; border: none; cursor: pointer; transition: background .15s, opacity .15s; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+  .btn-primary:disabled { opacity: .45; cursor: not-allowed; }
+  .btn-secondary { background: #fff; color: var(--accent); border: 1.5px solid var(--accent); }
+  .btn-secondary:hover { background: var(--accent-light); }
+  .btn-success { background: var(--success); color: #fff; }
+  .btn-success:hover:not(:disabled) { background: #0d6a2c; }
+  .btn-success:disabled { opacity: .45; cursor: not-allowed; }
+
+  .actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 24px; }
+  .actions.right { justify-content: flex-end; }
+
+  .alert { border-radius: 8px; padding: 12px 16px; font-size: 13px; display: flex; gap: 10px; align-items: flex-start; margin-top: 16px; line-height: 1.5; }
+  .alert-error { background: var(--error-light); color: var(--error); border: 1px solid #f5c6c4; }
+  .alert-success { background: var(--success-light); color: var(--success); border: 1px solid #c0dfc8; }
+  .alert-warn { background: var(--warn-light); color: var(--warn); border: 1px solid #f0d080; }
+  .alert-info { background: var(--accent-light); color: var(--accent); border: 1px solid #c5d8fb; }
+
+  .divider { height: 1px; background: var(--border); margin: 20px 0; }
+
+  .results-grid { display: flex; flex-direction: column; gap: 12px; }
+  .result-row { border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .result-info { flex: 1; min-width: 160px; }
+  .result-info .rname { font-weight: 600; font-size: 14px; word-break: break-all; }
+  .result-info .rmeta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .result-info .rmeta.zero { color: var(--error); }
+
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+  .badge-green { background: var(--success-light); color: var(--success); }
+  .badge-blue { background: var(--accent-light); color: var(--accent); }
+  .badge-red { background: var(--error-light); color: var(--error); }
+
+  /* Progress */
+  .progress-wrap { margin-top: 20px; }
+  .progress-label { font-size: 13px; color: var(--muted); margin-bottom: 6px; display: flex; justify-content: space-between; }
+  .progress-bar-bg { background: #e0e0e0; border-radius: 99px; height: 8px; overflow: hidden; }
+  .progress-bar-fill { background: var(--accent); height: 100%; border-radius: 99px; transition: width .1s; width: 0%; }
+
+  .spinner { width: 18px; height: 18px; border: 2.5px solid rgba(255,255,255,.35); border-top-color: #fff; border-radius: 50%; animation: spin .6s linear infinite; flex-shrink: 0; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .hidden { display: none !important; }
+  footer { text-align: center; font-size: 12px; color: var(--muted); margin-top: 32px; max-width: 780px; margin-left: auto; margin-right: auto; }
+  @media (max-width: 540px) { .card { padding: 20px 16px; } .step-connector { width: 16px; } .step-item span:last-child { display: none; } }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>📋 SKU Filter Tool</h1>
+  <p>Upload your base files, provide a SKU list, and extract matching rows in any format.</p>
+</header>
+
+<div class="stepper">
+  <div class="step-item active" id="s1"><div class="step-num">1</div><span>Base Files</span></div>
+  <div class="step-connector" id="sc1"></div>
+  <div class="step-item" id="s2"><div class="step-num">2</div><span>SKU List</span></div>
+  <div class="step-connector" id="sc2"></div>
+  <div class="step-item" id="s3"><div class="step-num">3</div><span>Match Columns</span></div>
+  <div class="step-connector" id="sc3"></div>
+  <div class="step-item" id="s4"><div class="step-num">4</div><span>Results</span></div>
+</div>
+
+<!-- Step 1 -->
+<div class="card" id="step1">
+  <h2>Step 1 — Upload Base File(s)</h2>
+  <p class="subtitle">Supports CSV, Excel (.xlsx/.xls), TSV, and TXT. Large files are handled via streaming.</p>
+  <div class="drop-zone" id="baseDropZone">
+    <input type="file" id="baseFileInput" multiple accept=".csv,.xlsx,.xls,.tsv,.txt">
+    <div class="drop-icon">📂</div>
+    <p><strong>Click to browse</strong> or drag & drop files here</p>
+    <p style="margin-top:4px;font-size:12px;">CSV · Excel · TSV · TXT — any size</p>
+  </div>
+  <div class="file-list" id="baseFileList"></div>
+  <div id="step1Alert"></div>
+  <div class="actions right">
+    <button class="btn btn-primary" id="step1Next" disabled>Next →</button>
+  </div>
+</div>
+
+<!-- Step 2 -->
+<div class="card hidden" id="step2">
+  <h2>Step 2 — Upload SKU List</h2>
+  <p class="subtitle">Upload the reference file containing the SKU values to match against.</p>
+  <div class="drop-zone" id="skuDropZone">
+    <input type="file" id="skuFileInput" accept=".csv,.xlsx,.xls,.tsv,.txt">
+    <div class="drop-icon">🗂️</div>
+    <p><strong>Click to browse</strong> or drag & drop your SKU list</p>
+    <p style="margin-top:4px;font-size:12px;">CSV · Excel · TSV · TXT</p>
+  </div>
+  <div class="file-list" id="skuFileList"></div>
+  <div id="step2Alert"></div>
+  <div class="actions">
+    <button class="btn btn-secondary" id="step2Back">← Back</button>
+    <button class="btn btn-primary" id="step2Next" disabled>Next →</button>
+  </div>
+</div>
+
+<!-- Step 3 -->
+<div class="card hidden" id="step3">
+  <h2>Step 3 — Map Matching Columns</h2>
+  <p class="subtitle">Select which column in each base file matches which column in the SKU list.</p>
+  <div id="mappingRows"></div>
+  <div id="step3Progress" class="hidden">
+    <div class="divider"></div>
+    <div class="progress-wrap">
+      <div class="progress-label"><span id="progressFile">Filtering…</span><span id="progressPct">0%</span></div>
+      <div class="progress-bar-bg"><div class="progress-bar-fill" id="progressFill"></div></div>
+    </div>
+  </div>
+  <div id="step3Alert"></div>
+  <div class="actions">
+    <button class="btn btn-secondary" id="step3Back">← Back</button>
+    <button class="btn btn-primary" id="runFilter">
+      <span id="runFilterLabel">Run Filter</span>
+      <span id="runFilterSpinner" class="spinner hidden"></span>
+    </button>
+  </div>
+</div>
+
+<!-- Step 4 -->
+<div class="card hidden" id="step4">
+  <h2>Step 4 — Download Results</h2>
+  <p class="subtitle">Choose your export format per file and download.</p>
+  <div id="resultsGrid" class="results-grid"></div>
+  <div class="divider"></div>
+  <div class="actions">
+    <button class="btn btn-secondary" id="step4Back">← Back</button>
+    <button class="btn btn-primary" id="downloadAll">⬇ Download All</button>
+    <button class="btn btn-secondary" id="startOver">↺ Start Over</button>
+  </div>
+</div>
+
+<footer>All processing happens locally in your browser — no data is sent to any server.</footer>
+
+<script>
+// ── State ─────────────────────────────────────────────────────────────────────
+const state = {
+  baseFiles: [],  // {file, name, headers, delim, isExcel}
+  skuFile: null,  // {file, name, headers, data, delim, isExcel}
+  results: []     // {name, headers, matchedRows, total, matched}
+};
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+const ext = name => name.split('.').pop().toLowerCase();
+const fmtBytes = b => b < 1048576 ? (b/1024).toFixed(1)+' KB' : (b/1048576).toFixed(1)+' MB';
+const sanitize = n => n.replace(/[^\w.\-]/g, '_');
+const isExcelExt = e => e === 'xlsx' || e === 'xls';
+
+function readChunk(blob) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = e => res(e.target.result);
+    r.onerror = rej;
+    r.readAsText(blob);
+  });
+}
+function readArrayBuffer(blob) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = e => res(e.target.result);
+    r.onerror = rej;
+    r.readAsArrayBuffer(blob);
+  });
+}
+
+function detectDelim(fileExt, sample) {
+  if (fileExt === 'tsv') return '\t';
+  const line1 = sample.split('\n')[0];
+  const tabs = (line1.match(/\t/g)||[]).length;
+  const commas = (line1.match(/,/g)||[]).length;
+  return tabs > commas ? '\t' : ',';
+}
+
+// Proper CSV line parser (handles quoted fields with commas/newlines)
+function parseCSVLine(line, delim) {
+  const res = []; let cur = ''; let inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQ && line[i+1] === '"') { cur += '"'; i++; }
+      else inQ = !inQ;
+    } else if (ch === delim && !inQ) { res.push(cur.trim()); cur = ''; }
+    else cur += ch;
+  }
+  res.push(cur.trim());
+  return res;
+}
+
+// ── Header detection (reads only first ~8KB) ─────────────────────────────────
+async function detectHeaders(file) {
+  const e = ext(file.name);
+  if (isExcelExt(e)) {
+    // Excel: must read full file but use sheetRows:2 to stop early
+    const buf = await readArrayBuffer(file);
+    const wb = XLSX.read(buf, {type: 'array', sheetRows: 2});
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, {header: 1, defval: ''});
+    return { headers: (rows[0]||[]).map(String), delim: null, isExcel: true };
+  } else {
+    // Text: read first 64KB only
+    const slice = file.slice(0, 65536);
+    const text = await readChunk(slice);
+    const delim = detectDelim(e, text);
+    const firstLine = text.split('\n')[0].replace(/\r$/, '');
+    const headers = parseCSVLine(firstLine, delim);
+    return { headers, delim, isExcel: false };
+  }
+}
+
+// ── Full parse for SKU list (expected small) ─────────────────────────────────
+async function parseFullFile(file) {
+  const e = ext(file.name);
+  if (isExcelExt(e)) {
+    const buf = await readArrayBuffer(file);
+    const wb = XLSX.read(buf, {type: 'array'});
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const data = XLSX.utils.sheet_to_json(ws, {defval: ''});
+    const headers = data.length ? Object.keys(data[0]) : [];
+    return { data, headers, delim: null, isExcel: true };
+  } else {
+    const text = await readChunk(file);
+    const delim = detectDelim(e, text);
+    const wb = XLSX.read(text, {type: 'string', FS: delim});
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const data = XLSX.utils.sheet_to_json(ws, {defval: ''});
+    const headers = data.length ? Object.keys(data[0]) : [];
+    return { data, headers, delim, isExcel: false };
+  }
+}
+
+// ── Streaming filter for large text files ────────────────────────────────────
+async function streamFilterCSV(file, delim, baseColIdx, skuSet, onProgress) {
+  const CHUNK = 4 * 1024 * 1024; // 4MB chunks
+  let offset = 0;
+  let remainder = '';
+  let headers = null;
+  const matchedRows = [];
+  let totalRows = 0;
+
+  while (offset < file.size) {
+    const slice = file.slice(offset, offset + CHUNK);
+    const text = await readChunk(slice);
+    const combined = remainder + text;
+    const lines = combined.split('\n');
+    remainder = lines.pop(); // last potentially incomplete line
+
+    for (const rawLine of lines) {
+      const line = rawLine.replace(/\r$/, '');
+      if (!line.trim()) continue;
+      const fields = parseCSVLine(line, delim);
+
+      if (headers === null) {
+        headers = fields;
+        continue;
+      }
+      totalRows++;
+      const val = String(fields[baseColIdx] ?? '').trim().toLowerCase();
+      if (skuSet.has(val)) {
+        // Build object
+        const obj = {};
+        headers.forEach((h, i) => { obj[h] = fields[i] ?? ''; });
+        matchedRows.push(obj);
+      }
+    }
+
+    offset += CHUNK;
+    onProgress(Math.min(offset / file.size, 1));
+    // Yield to browser
+    await new Promise(r => setTimeout(r, 0));
+  }
+
+  // Handle final remainder
+  if (remainder.trim()) {
+    const fields = parseCSVLine(remainder.replace(/\r$/, ''), delim);
+    if (headers) {
+      totalRows++;
+      const val = String(fields[baseColIdx] ?? '').trim().toLowerCase();
+      if (skuSet.has(val)) {
+        const obj = {};
+        headers.forEach((h, i) => { obj[h] = fields[i] ?? ''; });
+        matchedRows.push(obj);
+      }
+    }
+  }
+
+  return { matchedRows, totalRows, headers: headers || [] };
+}
+
+// ── Excel filter (full load, in-memory) ──────────────────────────────────────
+async function filterExcel(file, baseCol, skuSet, onProgress) {
+  onProgress(0.1);
+  const buf = await readArrayBuffer(file);
+  onProgress(0.6);
+  const wb = XLSX.read(buf, {type: 'array'});
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const data = XLSX.utils.sheet_to_json(ws, {defval: ''});
+  onProgress(0.9);
+  const headers = data.length ? Object.keys(data[0]) : [];
+  const matchedRows = data.filter(r => skuSet.has(String(r[baseCol]??'').trim().toLowerCase()));
+  onProgress(1);
+  return { matchedRows, totalRows: data.length, headers };
+}
+
+// ── Export ────────────────────────────────────────────────────────────────────
+function exportData(rows, headers, format, filename) {
+  if (format === 'xlsx') {
+    const ws = XLSX.utils.json_to_sheet(rows, {header: headers});
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Results');
+    XLSX.writeFile(wb, filename + '.xlsx');
+    return;
+  }
+  const delim = (format === 'tsv' || format === 'txt') ? '\t' : ',';
+  const esc = v => {
+    const s = String(v ?? '');
+    if (format === 'csv' && (s.includes(',') || s.includes('"') || s.includes('\n')))
+      return '"' + s.replace(/"/g, '""') + '"';
+    return s;
+  };
+  const lines = [headers.map(esc).join(delim)];
+  rows.forEach(r => lines.push(headers.map(h => esc(r[h])).join(delim)));
+  const blob = new Blob([lines.join('\n')], {type: 'text/plain'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = filename + '.' + format; a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+// ── Stepper ───────────────────────────────────────────────────────────────────
+function setStep(n) {
+  [1,2,3,4].forEach(i => {
+    document.getElementById('step'+i).classList.toggle('hidden', i !== n);
+    const si = document.getElementById('s'+i);
+    si.classList.remove('active','done');
+    if (i < n) { si.classList.add('done'); document.getElementById('sc'+i)?.classList.add('done'); }
+    else if (i === n) si.classList.add('active');
+    else document.getElementById('sc'+i)?.classList.remove('done');
+  });
+}
+
+function setAlert(elId, msg, type='error') {
+  const el = document.getElementById(elId);
+  el.innerHTML = msg ? `<div class="alert alert-${type}">${msg}</div>` : '';
+}
+
+// ── File chip ─────────────────────────────────────────────────────────────────
+function fileChip(name, size, onRemove) {
+  const div = document.createElement('div'); div.className = 'file-chip';
+  div.innerHTML = `<span class="fname">📄 ${name}</span><span class="fsize">${fmtBytes(size)}</span>`;
+  if (onRemove) {
+    const b = document.createElement('button'); b.className = 'remove-btn'; b.textContent = '✕';
+    b.onclick = onRemove; div.appendChild(b);
+  }
+  return div;
+}
+
+// ── Drag-drop ─────────────────────────────────────────────────────────────────
+function setupDrop(zoneId, onFiles) {
+  const z = document.getElementById(zoneId);
+  z.addEventListener('dragover', e => { e.preventDefault(); z.classList.add('drag-over'); });
+  z.addEventListener('dragleave', () => z.classList.remove('drag-over'));
+  z.addEventListener('drop', e => { e.preventDefault(); z.classList.remove('drag-over'); onFiles(e.dataTransfer.files); });
+}
+
+// ── Step 1 — Base files ───────────────────────────────────────────────────────
+const baseInput = document.getElementById('baseFileInput');
+const baseList  = document.getElementById('baseFileList');
+const step1Next = document.getElementById('step1Next');
+
+async function addBaseFiles(files) {
+  for (const file of Array.from(files)) {
+    if (state.baseFiles.find(f => f.name === file.name)) continue;
+    const e = ext(file.name);
+    try {
+      const { headers, delim, isExcel } = await detectHeaders(file);
+      if (!headers.length) { setAlert('step1Alert', `⚠️ Could not read headers from <b>${file.name}</b> — is the file empty?`); continue; }
+
+      const entry = { file, name: file.name, headers, delim, isExcel };
+      state.baseFiles.push(entry);
+
+      // Warn about large Excel
+      if (isExcel && file.size > 100 * 1024 * 1024)
+        setAlert('step1Alert', `⚠️ <b>${file.name}</b> is a large Excel file (${fmtBytes(file.size)}). Filtering may take a moment. Consider saving as CSV for faster processing.`, 'warn');
+
+      const chip = fileChip(file.name, file.size, () => {
+        state.baseFiles = state.baseFiles.filter(f => f.name !== file.name);
+        chip.remove();
+        step1Next.disabled = state.baseFiles.length === 0;
+        if (!state.baseFiles.length) setAlert('step1Alert', '');
+      });
+      baseList.appendChild(chip);
+    } catch(err) {
+      setAlert('step1Alert', `⚠️ Could not read <b>${file.name}</b>: ${err.message}`);
+    }
+  }
+  step1Next.disabled = state.baseFiles.length === 0;
+}
+
+baseInput.addEventListener('change', e => addBaseFiles(e.target.files));
+setupDrop('baseDropZone', addBaseFiles);
+step1Next.addEventListener('click', () => setStep(2));
+
+// ── Step 2 — SKU file ─────────────────────────────────────────────────────────
+const skuInput  = document.getElementById('skuFileInput');
+const skuList   = document.getElementById('skuFileList');
+const step2Next = document.getElementById('step2Next');
+
+async function setSkuFile(file) {
+  skuList.innerHTML = ''; setAlert('step2Alert', '');
+  try {
+    const parsed = await parseFullFile(file);
+    if (!parsed.headers.length) { setAlert('step2Alert', '⚠️ Could not read headers from SKU file — is it empty?'); return; }
+    state.skuFile = { file, name: file.name, ...parsed };
+    const chip = fileChip(file.name, file.size, () => {
+      state.skuFile = null; skuList.innerHTML = ''; step2Next.disabled = true;
+    });
+    skuList.appendChild(chip);
+    step2Next.disabled = false;
+  } catch(err) {
+    setAlert('step2Alert', `⚠️ Could not parse SKU file: ${err.message}`);
+  }
+}
+
+skuInput.addEventListener('change', e => { if (e.target.files[0]) setSkuFile(e.target.files[0]); });
+setupDrop('skuDropZone', files => { if (files[0]) setSkuFile(files[0]); });
+document.getElementById('step2Back').addEventListener('click', () => setStep(1));
+step2Next.addEventListener('click', () => { buildMappingUI(); setStep(3); });
+
+// ── Step 3 — Column mapping ───────────────────────────────────────────────────
+function buildMappingUI() {
+  const container = document.getElementById('mappingRows');
+  container.innerHTML = '';
+  const skuHeaders = state.skuFile.headers;
+
+  state.baseFiles.forEach((bf, idx) => {
+    const section = document.createElement('div');
+    section.style.marginBottom = '20px';
+
+    const lbl = document.createElement('p');
+    lbl.style.cssText = 'font-size:13px;font-weight:600;margin-bottom:10px;';
+    lbl.innerHTML = `📄 ${bf.name} <span style="font-weight:400;color:var(--muted)">(${bf.headers.length} columns)</span>`;
+    section.appendChild(lbl);
+
+    const row = document.createElement('div'); row.className = 'row';
+
+    // Base col
+    const c1 = document.createElement('div'); c1.className = 'col';
+    const l1 = document.createElement('label'); l1.className = 'field-label';
+    l1.textContent = 'Column in base file'; l1.htmlFor = 'baseCol_'+idx;
+    const s1 = document.createElement('select'); s1.id = 'baseCol_'+idx;
+    bf.headers.forEach(h => { const o = document.createElement('option'); o.value = h; o.textContent = h; s1.appendChild(o); });
+    const g1 = bf.headers.find(h => /sku|item.?id|product.?id|upc|barcode/i.test(h));
+    if (g1) s1.value = g1;
+    c1.appendChild(l1); c1.appendChild(s1); row.appendChild(c1);
+
+    const arrow = document.createElement('div');
+    arrow.style.cssText = 'display:flex;align-items:flex-end;padding-bottom:10px;font-size:20px;color:var(--muted);flex-shrink:0;';
+    arrow.textContent = '⇌'; row.appendChild(arrow);
+
+    // SKU col
+    const c2 = document.createElement('div'); c2.className = 'col';
+    const l2 = document.createElement('label'); l2.className = 'field-label';
+    l2.textContent = 'Column in SKU list'; l2.htmlFor = 'skuCol_'+idx;
+    const s2 = document.createElement('select'); s2.id = 'skuCol_'+idx;
+    skuHeaders.forEach(h => { const o = document.createElement('option'); o.value = h; o.textContent = h; s2.appendChild(o); });
+    const g2 = skuHeaders.find(h => /sku|item.?id|product.?id|upc|barcode/i.test(h));
+    if (g2) s2.value = g2;
+    c2.appendChild(l2); c2.appendChild(s2); row.appendChild(c2);
+
+    section.appendChild(row);
+    if (idx < state.baseFiles.length - 1) {
+      const d = document.createElement('div'); d.className = 'divider'; section.appendChild(d);
+    }
+    container.appendChild(section);
+  });
+}
+
+document.getElementById('step3Back').addEventListener('click', () => setStep(2));
+
+document.getElementById('runFilter').addEventListener('click', async () => {
+  const btn      = document.getElementById('runFilter');
+  const label    = document.getElementById('runFilterLabel');
+  const spinner  = document.getElementById('runFilterSpinner');
+  const progress = document.getElementById('step3Progress');
+  const progFile = document.getElementById('progressFile');
+  const progPct  = document.getElementById('progressPct');
+  const progFill = document.getElementById('progressFill');
+
+  btn.disabled = true; spinner.classList.remove('hidden'); label.textContent = 'Filtering…';
+  progress.classList.remove('hidden');
+  setAlert('step3Alert', '');
+  state.results = [];
+
+  try {
+    // Build SKU sets per base file mapping
+    for (let idx = 0; idx < state.baseFiles.length; idx++) {
+      const bf     = state.baseFiles[idx];
+      const baseCol = document.getElementById('baseCol_'+idx).value;
+      const skuCol  = document.getElementById('skuCol_'+idx).value;
+
+      progFile.textContent = `Filtering ${bf.name}… (file ${idx+1}/${state.baseFiles.length})`;
+      progFill.style.width = '0%'; progPct.textContent = '0%';
+
+      // Build SKU lookup set
+      const skuSet = new Set(
+        state.skuFile.data.map(r => String(r[skuCol]??'').trim().toLowerCase()).filter(Boolean)
+      );
+
+      const onProg = p => {
+        const pct = Math.round(p * 100);
+        progFill.style.width = pct + '%';
+        progPct.textContent = pct + '%';
+      };
+
+      let result;
+      if (bf.isExcel) {
+        result = await filterExcel(bf.file, baseCol, skuSet, onProg);
+      } else {
+        const baseColIdx = bf.headers.indexOf(baseCol);
+        result = await streamFilterCSV(bf.file, bf.delim, baseColIdx, skuSet, onProg);
+      }
+
+      state.results.push({
+        name: bf.name,
+        headers: result.headers,
+        matchedRows: result.matchedRows,
+        total: result.totalRows,
+        matched: result.matchedRows.length
+      });
+    }
+
+    buildResultsUI();
+    setStep(4);
+  } catch(err) {
+    setAlert('step3Alert', `⚠️ Error during filtering: ${err.message}`);
+  } finally {
+    btn.disabled = false; spinner.classList.add('hidden'); label.textContent = 'Run Filter';
+    progress.classList.add('hidden');
+  }
+});
+
+// ── Step 4 — Results ──────────────────────────────────────────────────────────
+function buildResultsUI() {
+  const grid = document.getElementById('resultsGrid');
+  grid.innerHTML = '';
+
+  state.results.forEach((res, idx) => {
+    const row = document.createElement('div'); row.className = 'result-row';
+    const baseName = res.name.replace(/\.[^.]+$/, '');
+
+    const info = document.createElement('div'); info.className = 'result-info';
+    info.innerHTML = `<div class="rname">📄 ${res.name}</div>
+      <div class="${res.matched===0?'rmeta zero':'rmeta'}">${res.matched.toLocaleString()} matched / ${res.total.toLocaleString()} total rows</div>`;
+    row.appendChild(info);
+
+    const badge = document.createElement('span');
+    if (res.matched === 0)           { badge.className='badge badge-red';   badge.textContent='No matches'; }
+    else if (res.matched===res.total){ badge.className='badge badge-blue'; badge.textContent='All matched'; }
+    else {
+      const pct = Math.round(res.matched/res.total*100);
+      badge.className='badge badge-green';
+      badge.textContent = (pct === 0 ? '<1' : pct) + '% matched';
+    }
+    row.appendChild(badge);
+
+    const fwrap = document.createElement('div'); fwrap.style.cssText='display:flex;align-items:center;gap:8px;';
+    const fsel = document.createElement('select'); fsel.id='fmt_'+idx; fsel.style.width='110px';
+    ['csv','xlsx','tsv','txt'].forEach(f => { const o=document.createElement('option'); o.value=f; o.textContent=f.toUpperCase(); fsel.appendChild(o); });
+    const srcExt = ext(res.name);
+    if (['csv','xlsx','tsv','txt'].includes(srcExt)) fsel.value = srcExt;
+    fwrap.appendChild(fsel); row.appendChild(fwrap);
+
+    const dlBtn = document.createElement('button'); dlBtn.className='btn btn-success';
+    dlBtn.textContent='⬇ Download'; dlBtn.disabled = res.matched===0;
+    dlBtn.addEventListener('click', () => {
+      exportData(res.matchedRows, res.headers, document.getElementById('fmt_'+idx).value, sanitize(baseName+'_filtered'));
+    });
+    row.appendChild(dlBtn);
+    grid.appendChild(row);
+  });
+}
+
+document.getElementById('step4Back').addEventListener('click', () => setStep(3));
+
+document.getElementById('downloadAll').addEventListener('click', () => {
+  state.results.forEach((res, idx) => {
+    if (!res.matched) return;
+    const fmt = document.getElementById('fmt_'+idx).value;
+    setTimeout(() => exportData(res.matchedRows, res.headers, fmt, sanitize(res.name.replace(/\.[^.]+$/,'')+'_filtered')), idx*350);
+  });
+});
+
+document.getElementById('startOver').addEventListener('click', () => {
+  state.baseFiles=[]; state.skuFile=null; state.results=[];
+  ['baseFileList','skuFileList','mappingRows','resultsGrid'].forEach(id => document.getElementById(id).innerHTML='');
+  ['step1Alert','step2Alert','step3Alert'].forEach(id => setAlert(id,''));
+  document.getElementById('step1Next').disabled=true;
+  document.getElementById('step2Next').disabled=true;
+  document.getElementById('baseFileInput').value='';
+  document.getElementById('skuFileInput').value='';
+  setStep(1);
+});
+</script>
+</body>
+</html>
